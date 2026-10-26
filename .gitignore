@@ -1,0 +1,16 @@
+node_modules
+.claude
+
+# locally generated certs/keys from practice projects (bash generate-cert*.sh recreates them)
+practice/**/*.pem
+practice/**/*.key
+
+# TLS session secrets and packet captures - never commit these
+practice/**/keys.log
+practice/**/*.pcap
+practice/**/*.pcapng
+
+# compiled C binaries
+practice/**/udp-server
+practice/**/tcp-server
+practice/**/backlog-server

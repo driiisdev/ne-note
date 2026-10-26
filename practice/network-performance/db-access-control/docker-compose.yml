@@ -1,0 +1,52 @@
+# Four containers, two networks, three layers of access control in front of one database:
+#   1. the db is NOT published on the host (no "ports:")
+#   2. network segmentation: only containers on "backend" can route to it at all
+#   3. pg_hba.conf: on "backend", only the app's exact IP may log in
+#
+#   docker compose up -d
+#   bash test.sh
+#   docker compose down
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: devpassword # demo only - use secrets in real life
+      POSTGRES_DB: shop
+    # use our pg_hba.conf instead of the image's permissive default
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    volumes:
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    networks:
+      backend:
+        ipv4_address: 172.30.0.5
+    # deliberately no "ports:" - nothing on the host (or the internet) can reach 5432
+
+  app: # the legitimate client: on both networks, the only IP pg_hba.conf allows
+    image: postgres:16-alpine # just for its psql client
+    command: ["sleep", "infinity"]
+    networks:
+      frontend:
+      backend:
+        ipv4_address: 172.30.0.10
+
+  rogue: # a compromised/unauthorised container that IS on the backend network
+    image: postgres:16-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      backend:
+        ipv4_address: 172.30.0.20
+
+  outsider: # e.g. a public-facing service that should never talk to the db directly
+    image: postgres:16-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+
+networks:
+  frontend: {}
+  backend:
+    internal: true # no route to the outside world from this network, in either direction
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

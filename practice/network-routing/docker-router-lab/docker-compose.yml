@@ -1,0 +1,50 @@
+# Two separate subnets joined by a Linux container acting as a router.
+#
+#   net_a 10.10.1.0/24            net_b 10.10.2.0/24
+#   host_a 10.10.1.10  <--->  router  <--->  host_b 10.10.2.20
+#                     .254 (eth on a)  .254 (eth on b)
+#
+#   docker compose up -d
+#   bash walkthrough.sh
+#   docker compose down
+services:
+  router:
+    image: alpine:3.20
+    cap_add: [NET_ADMIN] # allowed to change routes / firewall rules in its own network namespace
+    sysctls:
+      net.ipv4.ip_forward: "1" # THE switch that turns a host into a router: forward packets not addressed to me
+    command: ["sh", "-c", "apk add --no-cache tcpdump iptables >/dev/null 2>&1; sleep infinity"]
+    networks:
+      net_a:
+        ipv4_address: 10.10.1.254
+      net_b:
+        ipv4_address: 10.10.2.254
+
+  host_a:
+    image: alpine:3.20
+    cap_add: [NET_ADMIN]
+    # Docker gives each container a default route via the bridge gateway (.1, the Docker host).
+    # Add a more specific route: "to reach net_b, go via the router".
+    command: ["sh", "-c", "ip route add 10.10.2.0/24 via 10.10.1.254 && sleep infinity"]
+    networks:
+      net_a:
+        ipv4_address: 10.10.1.10
+
+  host_b:
+    image: alpine:3.20
+    cap_add: [NET_ADMIN]
+    # ...and the return path. Routing is per direction: forgetting this one is the classic mistake.
+    command: ["sh", "-c", "ip route add 10.10.1.0/24 via 10.10.2.254 && sleep infinity"]
+    networks:
+      net_b:
+        ipv4_address: 10.10.2.20
+
+networks:
+  net_a:
+    ipam:
+      config:
+        - subnet: 10.10.1.0/24
+  net_b:
+    ipam:
+      config:
+        - subnet: 10.10.2.0/24
